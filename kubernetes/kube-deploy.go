@@ -1,0 +1,96 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"path/filepath"
+
+	"github.com/sirupsen/logrus"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
+)
+
+func main() {
+	var kubeconfig *string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
+
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err)
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
+	namespace := "default"
+	deploynaamae := "go-deployment"
+	fmt.Println("Checking for a existing deployment")
+	_, err = clientset.AppsV1().Deployments(namespace).Get(context.TODO(), deploynaamae, metav1.GetOptions{})
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"namespace":  namespace,
+			"Deployment": deploynaamae,
+		}).Info("Deploymet not found in namespace ")
+	}
+	logrus.Info("Deleting Deployment before creating")
+	err = clientset.AppsV1().Deployments(namespace).Delete(context.TODO(), deploynaamae, metav1.DeleteOptions{})
+	if err != nil {
+		logrus.Info("Errof failed deleting deploy", err.Error())
+	}
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      deploynaamae,
+			Namespace: namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: int32Ptr(2),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app":      "golang",
+					"deployed": "go-cleint",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app":      "golang",
+						"deployed": "go-cleint",
+					},
+				},
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
+						{
+							Name:    "echo-init-1",
+							Image:   "busybox",
+							Command: []string{"echo", "In Init Container"},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:    "main-container",
+							Image:   "busybox",
+							Command: []string{"sleep", "10000"},
+						},
+					},
+				},
+			},
+		},
+	}
+	create_deploy, err := clientset.AppsV1().Deployments("default").Create(context.TODO(), deployment, metav1.CreateOptions{})
+	if err != nil {
+		logrus.Panic("Error creating deployment", err.Error())
+	}
+	logrus.Info(create_deploy)
+}
+
+func int32Ptr(i int32) *int32 { return &i }
