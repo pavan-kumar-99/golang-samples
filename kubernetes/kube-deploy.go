@@ -51,6 +51,12 @@ func main() {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploynaamae,
 			Namespace: namespace,
+			Annotations: map[string]string{
+				"kv-inject":  "true",
+				"init-only":  "false",
+				"consul-url": "https://consul-prod.pavan.com",
+				"Port":       "9200",
+			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: int32Ptr(2),
@@ -90,7 +96,15 @@ func main() {
 	if err != nil {
 		logrus.Panic("Error creating deployment", err.Error())
 	}
-	logrus.Info(create_deploy)
+	annotations := create_deploy.ObjectMeta.Annotations
+	logrus.Info(annotations)
+	extract(annotations)
 }
 
 func int32Ptr(i int32) *int32 { return &i }
+
+func extract(c map[string]string) {
+	if consul_url, ok := c["consul-url"]; ok {
+		fmt.Println("Consul url is", consul_url)
+	}
+}
