@@ -41,6 +41,7 @@ func main() {
 	logrus.Info("Secret found, Updating it to the latest values")
 
 	//Update Logic with retry here
+	//TODO, Add retry logic here and also add Update function
 
 	err = secretClient.Delete(context.TODO(), secretname, metav1.DeleteOptions{})
 	if err != nil {
