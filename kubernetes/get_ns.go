@@ -30,9 +30,9 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	ns, err := k.CoreV1().Pods("default").Get(context.TODO(), "vault-0", metav1.GetOptions{})
+	po, err := k.CoreV1().Pods("default").Get(context.TODO(), "vault-0", metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
-	fmt.Println(ns.GetName())
+	fmt.Println(po.GetName())
 }
