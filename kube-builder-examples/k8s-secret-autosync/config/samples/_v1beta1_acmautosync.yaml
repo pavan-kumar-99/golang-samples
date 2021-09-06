@@ -1,0 +1,8 @@
+apiVersion: acm-autosync.io/v1beta1
+kind: AcmAutoSync
+metadata:
+  name: acmautosync-sample
+  namespace: default
+spec:
+  secretName: pavan-operator-secret
+  acmArn: "arn:1234567/operator-secret"
