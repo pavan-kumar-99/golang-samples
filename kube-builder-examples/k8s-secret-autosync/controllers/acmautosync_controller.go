@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	acmautosynciov1beta1 "pavan-kumar-99/k8s-acm-autosync/api/v1beta1"
@@ -26,6 +27,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -34,7 +37,8 @@ import (
 // AcmAutoSyncReconciler reconciles a AcmAutoSync object
 type AcmAutoSyncReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=acm-autosync.io,resources=acmautosyncs,verbs=get;list;watch;create;update;patch;delete
@@ -53,16 +57,40 @@ type AcmAutoSyncReconciler struct {
 func (r *AcmAutoSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logs := log.FromContext(ctx)
 	var acmas acmautosynciov1beta1.AcmAutoSync
+	var acmasSecret corev1.Secret
 	if err := r.Get(ctx, req.NamespacedName, &acmas); err != nil {
-		logs.Info("Unable to fetch AcmAutoSync", "Error", err)
-		var acmasSecret corev1.Secret
-		if err := r.Get(ctx, req.NamespacedName, &acmasSecret); err == nil {
+		logs.Info("AcmAutoSync Not found", "Error", err)
+		// fmt.Println(acmas.Spec.SecretName)
+		custom := types.NamespacedName{
+			Name:      acmas.Spec.SecretName,
+			Namespace: acmas.Namespace,
+		}
+		fmt.Println(custom.Name, custom.Namespace)
+		if err = r.Get(ctx, custom, &acmasSecret); err == nil {
+			logs.Info("Found Secret", "Secret Details", custom)
 			return r.RemoveSecret(ctx, &acmasSecret, logs)
 		}
-		if err := r.Get(ctx, req.NamespacedName, &acmasSecret); err != nil {
-			logs.Info("unable to fetch Secret for AcmAutoSync", "AcmAutoSync", req.NamespacedName)
-			return r.CreateSecret(ctx, req, acmas, logs)
+		if err = r.Get(ctx, custom, &acmasSecret); err != nil {
+			logs.Info("Not Found Secret", "Secret Details", custom)
+			return r.RemoveSecret(ctx, &acmasSecret, logs)
 		}
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	custom := types.NamespacedName{
+		Name:      acmas.Spec.SecretName,
+		Namespace: acmas.Namespace,
+	}
+	if err := r.Get(ctx, custom, &acmasSecret); err == nil {
+		logs.Info("Found Secret", "Secret Details", custom)
+		return r.RemoveSecret(ctx, &acmasSecret, logs)
+	}
+	if err := r.Get(ctx, custom, &acmasSecret); err != nil {
+		logs.Info("unable to fetch Secret for AcmAutoSync", "AcmAutoSync", custom)
+		return r.CreateSecret(ctx, req, acmas, logs)
+	}
+	if err := r.Get(ctx, custom, &acmasSecret); err == nil {
+		logs.Info("Found Secret", "AcmAutoSync", custom)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	return ctrl.Result{}, nil
 }
@@ -75,6 +103,7 @@ func (r *AcmAutoSyncReconciler) RemoveSecret(ctx context.Context, delsecname *co
 	}
 	log.Info("Deleted the secret for", "AcmAutoSync", name)
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	//return ctrl.Result{}, nil
 }
 
 func (r *AcmAutoSyncReconciler) CreateSecret(ctx context.Context, req ctrl.Request, acmas acmautosynciov1beta1.AcmAutoSync, log logr.Logger) (ctrl.Result, error) {
@@ -94,11 +123,23 @@ func (r *AcmAutoSyncReconciler) CreateSecret(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 	log.Info("created secret for AcmAutoSync", "AcmAutoSync", secret)
+	r.UpdateStatus(ctx, req, acmas, secret)
+	r.recorder.Event(&acmas, corev1.EventTypeNormal, "Created", "Created Secreet")
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	//return ctrl.Result{}, nil
+}
+
+func (r *AcmAutoSyncReconciler) UpdateStatus(ctx context.Context, req ctrl.Request, acmas acmautosynciov1beta1.AcmAutoSync, secname *corev1.Secret) {
+	// Here we are only maintaining the current replica count for the status, more can be done.
+	fmt.Println("Updating status........")
+	fmt.Println(secname.CreationTimestamp)
+	acmas.Status.SecretCreationTime = secname.CreationTimestamp
+	fmt.Println(acmas.Status.SecretCreationTime)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AcmAutoSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("AcmAutoSync")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&acmautosynciov1beta1.AcmAutoSync{}).
 		Complete(r)

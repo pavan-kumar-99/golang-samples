@@ -37,6 +37,7 @@ type AcmAutoSyncSpec struct {
 type AcmAutoSyncStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	SecretCreationTime metav1.Time `json:"metadata.creationTimestamp,omitempty"`
 }
 
 //+kubebuilder:object:root=true
