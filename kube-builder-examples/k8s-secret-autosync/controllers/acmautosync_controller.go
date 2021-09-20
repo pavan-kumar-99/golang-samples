@@ -61,29 +61,47 @@ func (r *AcmAutoSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.Get(ctx, req.NamespacedName, &acmas); err != nil {
 		logs.Info("AcmAutoSync Not found", "Error", err)
 		// fmt.Println(acmas.Spec.SecretName)
-		custom := types.NamespacedName{
-			Name:      acmas.Spec.SecretName,
-			Namespace: acmas.Namespace,
-		}
-		fmt.Println(custom.Name, custom.Namespace)
-		if err = r.Get(ctx, custom, &acmasSecret); err == nil {
-			logs.Info("Found Secret", "Secret Details", custom)
-			return r.RemoveSecret(ctx, &acmasSecret, logs)
-		}
-		if err = r.Get(ctx, custom, &acmasSecret); err != nil {
-			logs.Info("Not Found Secret", "Secret Details", custom)
-			return r.RemoveSecret(ctx, &acmasSecret, logs)
-		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	finalizers := acmas.GetFinalizers()
+	if acmas.GetDeletionTimestamp().IsZero() {
+		if !containsString(finalizers, "finalizer.acmas") {
+			acmas.SetFinalizers(append(finalizers, "finalizer.acmas"))
+			fmt.Println("Finalizer Added")
+			if err := r.Update(ctx, &acmas); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed executing finalizer: %w", err)
+			}
+		}
+	} else {
+
+		if containsString(finalizers, "finalizer.acmas") {
+			custom := types.NamespacedName{
+				Name:      acmas.Spec.SecretName,
+				Namespace: acmas.Namespace,
+			}
+			fmt.Println(custom.Name, custom.Namespace)
+			if err := r.Get(ctx, custom, &acmasSecret); err == nil {
+				logs.Info("Found Secret", "Secret Details", custom)
+				return r.RemoveSecret(ctx, &acmasSecret, logs)
+			}
+			logs.Info("Executing finalizer in acmas")
+
+			acmas.SetFinalizers(removeString(finalizers, "finalizer.acmas"))
+			if err := r.Update(ctx, &acmas); err != nil {
+				return ctrl.Result{}, fmt.Errorf("unable to remove finalizer from obj: %w", err)
+			}
+		}
+		return ctrl.Result{}, nil
 	}
 	custom := types.NamespacedName{
 		Name:      acmas.Spec.SecretName,
 		Namespace: acmas.Namespace,
 	}
-	if err := r.Get(ctx, custom, &acmasSecret); err == nil {
-		logs.Info("Found Secret", "Secret Details", custom)
-		return r.RemoveSecret(ctx, &acmasSecret, logs)
-	}
+	// if err := r.Get(ctx, custom, &acmasSecret); err == nil {
+	// 	logs.Info("Found Secret", "Secret Details", custom)
+	// 	return r.RemoveSecret(ctx, &acmasSecret, logs)
+	// }
 	if err := r.Get(ctx, custom, &acmasSecret); err != nil {
 		logs.Info("unable to fetch Secret for AcmAutoSync", "AcmAutoSync", custom)
 		return r.CreateSecret(ctx, req, acmas, logs)
@@ -99,11 +117,11 @@ func (r *AcmAutoSyncReconciler) RemoveSecret(ctx context.Context, delsecname *co
 	name := delsecname.Name
 	if err := r.Delete(ctx, delsecname); err != nil {
 		log.Error(err, "unable to delete secret for secret", "AcmAutoSync", delsecname.Name)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	log.Info("Deleted the secret for", "AcmAutoSync", name)
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-	//return ctrl.Result{}, nil
+	// return ctrl.Result{}, nil
 }
 
 func (r *AcmAutoSyncReconciler) CreateSecret(ctx context.Context, req ctrl.Request, acmas acmautosynciov1beta1.AcmAutoSync, log logr.Logger) (ctrl.Result, error) {
@@ -135,6 +153,25 @@ func (r *AcmAutoSyncReconciler) UpdateStatus(ctx context.Context, req ctrl.Reque
 	fmt.Println(secname.CreationTimestamp)
 	acmas.Status.SecretCreationTime = secname.CreationTimestamp
 	fmt.Println(acmas.Status.SecretCreationTime)
+}
+
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) (result []string) {
+	for _, item := range slice {
+		if item == s {
+			continue
+		}
+		result = append(result, item)
+	}
+	return
 }
 
 // SetupWithManager sets up the controller with the Manager.
