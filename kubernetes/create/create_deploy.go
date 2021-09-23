@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -79,6 +80,16 @@ func main() {
 							Name:    "echo-init-1",
 							Image:   "busybox",
 							Command: []string{"echo", "In Init Container"},
+							Resources: corev1.ResourceRequirements{
+								Limits: map[corev1.ResourceName]resource.Quantity{
+									"cpu":    resource.MustParse("1"),
+									"memory": resource.MustParse("1Gi"),
+								},
+								Requests: map[corev1.ResourceName]resource.Quantity{
+									"cpu":    resource.MustParse("100m"),
+									"memory": resource.MustParse("90Mi"),
+								},
+							},
 						},
 					},
 					Containers: []corev1.Container{
@@ -86,6 +97,16 @@ func main() {
 							Name:    "main-container",
 							Image:   "busybox",
 							Command: []string{"sleep", "10000"},
+							Resources: corev1.ResourceRequirements{
+								Limits: map[corev1.ResourceName]resource.Quantity{
+									"cpu":    resource.MustParse("1"),
+									"memory": resource.MustParse("1Gi"),
+								},
+								Requests: map[corev1.ResourceName]resource.Quantity{
+									"cpu":    resource.MustParse("100m"),
+									"memory": resource.MustParse("90Mi"),
+								},
+							},
 						},
 					},
 				},
