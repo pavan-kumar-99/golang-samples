@@ -24,3 +24,7 @@ func main() {
 	prodqueue = DeQueue(prodqueue)
 	fmt.Println("After Dequee", prodqueue)
 }
+// code scan please remove after testing
+Access key ID: AKIAIOSFODNN7EXAMPLE
+
+Secret access key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
